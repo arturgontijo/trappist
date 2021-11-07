@@ -48,6 +48,9 @@ use sp_version::RuntimeVersion;
 pub use pallet_template;
 pub use validatorset;
 
+mod psp22_chain_ext;
+use psp22_chain_ext::Psp22Extension;
+
 /// An index to a block.
 pub type BlockNumber = u32;
 
@@ -403,7 +406,7 @@ impl pallet_contracts::Config for Runtime {
 	type ContractDeposit = ContractDeposit;
 	type WeightPrice = pallet_transaction_payment::Pallet<Self>;
 	type WeightInfo = pallet_contracts::weights::SubstrateWeight<Self>;
-	type ChainExtension = ();
+	type ChainExtension = Psp22Extension;
 	type DeletionQueueDepth = DeletionQueueDepth;
 	type DeletionWeightLimit = DeletionWeightLimit;
 	type Schedule = Schedule;
