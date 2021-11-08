@@ -7,7 +7,7 @@ use pallet_assets::WeightInfo;
 use pallet_contracts::chain_extension::{
 	ChainExtension, Environment, Ext, InitState, RetVal, SysConfig, UncheckedFrom,
 };
-use sp_runtime::{traits::Saturating, DispatchError};
+use sp_runtime::DispatchError;
 
 #[derive(Debug, PartialEq, Encode, Decode, MaxEncodedLen)]
 pub struct Psp22BalanceOfInput<AssetId, AccountId> {
@@ -28,7 +28,6 @@ impl<T> ChainExtension<T> for Psp22Extension
 where
 	T: SysConfig + pallet_assets::Config + pallet_contracts::Config,
 	<T as SysConfig>::AccountId: UncheckedFrom<<T as SysConfig>::Hash> + AsRef<[u8]>,
-	// T: SysConfig<Lookup = AccountIdLookup<AccountIdOf<T>, ()>>
 {
 	fn call<E: Ext>(func_id: u32, env: Environment<E, InitState>) -> Result<RetVal, DispatchError>
 	where
@@ -36,19 +35,6 @@ where
 		<E::T as SysConfig>::AccountId: UncheckedFrom<<E::T as SysConfig>::Hash> + AsRef<[u8]>,
 	{
 		match func_id {
-			1101 => {
-				let mut env = env.buf_in_buf_out();
-				let random_material = crate::RandomnessCollectiveFlip::random_material();
-				let random_slice = random_material.first().encode();
-				trace!(
-					target: "runtime",
-					"[ChainExtension]|call|func_id:{:}",
-					func_id
-				);
-				env.write(&random_slice, false, None)
-					.map_err(|_| DispatchError::Other("ChainExtension failed to call random"))?;
-			},
-
 			// PSP22 Metadata interfaces
 
 			// PSP22Metadata::token_name
@@ -61,8 +47,7 @@ where
 						.encode();
 				trace!(
 					target: "runtime",
-					"[ChainExtension]|call|func_id:{:}",
-					func_id
+					"[ChainExtension] <PSP22Metadata::token_name"
 				);
 				env.write(&name, false, None).map_err(|_| {
 					DispatchError::Other("ChainExtension failed to call token_name")
@@ -79,8 +64,7 @@ where
 						.encode();
 				trace!(
 					target: "runtime",
-					"[ChainExtension]|call|func_id:{:}",
-					func_id
+					"[ChainExtension] PSP22Metadata::token_symbol"
 				);
 				env.write(&symbol, false, None).map_err(|_| {
 					DispatchError::Other("ChainExtension failed to call token_symbol")
@@ -99,8 +83,7 @@ where
 					.encode();
 				trace!(
 					target: "runtime",
-					"[ChainExtension]|call|func_id:{:}",
-					func_id
+					"[ChainExtension] PSP22Metadata::token_decimals"
 				);
 				env.write(&decimals, false, None).map_err(|_| {
 					DispatchError::Other("ChainExtension failed to call token_decimals")
@@ -122,8 +105,7 @@ where
 				let result = total_supply.encode();
 				trace!(
 					target: "runtime",
-					"[ChainExtension]|call|func_id:{:}",
-					func_id
+					"[ChainExtension] PSP22::total_supply"
 				);
 				env.write(&result, false, None).map_err(|_| {
 					DispatchError::Other("ChainExtension failed to call total_supply")
@@ -142,8 +124,7 @@ where
 				let result = balance.encode();
 				trace!(
 					target: "runtime",
-					"[ChainExtension]|call|func_id:{:}",
-					func_id
+					"[ChainExtension] PSP22::balance_of"
 				);
 				env.write(&result, false, None).map_err(|_| {
 					DispatchError::Other("ChainExtension failed to call balance_of")
@@ -198,7 +179,7 @@ where
 					env.charge_weight(transfer_fee.saturating_add(transfer_fee / 10))?;
 				trace!(
 					target: "runtime",
-					"[ChainExtension]|call|transfer fees:{:?}",
+					"[ChainExtension]|call|transfer / charge_weight:{:?}",
 					charged_amount
 				);
 
@@ -215,8 +196,7 @@ where
 				);
 				trace!(
 					target: "runtime",
-					"[ChainExtension]|call|func_id:{:}",
-					func_id
+					"[ChainExtension]|call|transfer"
 				);
 				result.map_err(|err| {
 					trace!(
