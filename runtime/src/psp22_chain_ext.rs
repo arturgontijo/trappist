@@ -1,14 +1,16 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{
 	log::{error, trace},
-	traits::fungibles::{Inspect, InspectMetadata, Transfer},
+	traits::fungibles::{
+		approvals::{Inspect as AllowanceInspect, Mutate as AllowanceMutate},
+		Inspect, InspectMetadata, Transfer,
+	},
 };
-use frame_system::RawOrigin;
-use pallet_assets::{self, Pallet as Assets, WeightInfo};
+use pallet_assets::{self, WeightInfo};
 use pallet_contracts::chain_extension::{
 	ChainExtension, Environment, Ext, InitState, RetVal, SysConfig, UncheckedFrom,
 };
-use sp_runtime::{traits::StaticLookup, DispatchError};
+use sp_runtime::DispatchError;
 
 #[derive(Debug, PartialEq, Encode, Decode, MaxEncodedLen)]
 pub struct Psp22BalanceOfInput<AssetId, AccountId> {
@@ -157,25 +159,22 @@ where
 			// PSP22::allowance
 			0x4d47d921 => {
 				let mut env = env.buf_in_buf_out();
-				// let input: Psp22AllowanceInput<T::AssetId, T::AccountId> = env.read_as()?;
+				let input: Psp22AllowanceInput<T::AssetId, T::AccountId> = env.read_as()?;
 
-				// // TODO: can't access an asset's approvals info (private to pallet).
-				// let allowance = match pallet_assets::pallet::Approvals::<T>::get(
-				// 	(input.asset_id, input.owner, input.spender)) {
-				// 		Some(approval)=> approval.amount,
-				// 		None => T::Balance::from(0)
-				// 	};
-				// let result = allowance.encode();
-				// trace!(
-				// 	target: "runtime",
-				// 	"[ChainExtension] PSP22::allowance"
-				// );
-				// env.write(&result, false, None).map_err(|_| {
-				// 	DispatchError::Other("ChainExtension failed to call allowance")
-				// })?;
-
-				return Err(DispatchError::Other("Unimplemented func_id"));
-			}
+				let allowance =
+					<pallet_assets::Pallet<T> as AllowanceInspect<T::AccountId>>::allowance(
+						input.asset_id,
+						&input.owner,
+						&input.spender,
+					);
+				let result = allowance.encode();
+				trace!(
+					target: "runtime",
+					"[ChainExtension] PSP22::allowance"
+				);
+				env.write(&result, false, None)
+					.map_err(|_| DispatchError::Other("ChainExtension failed to call allowance"))?;
+			},
 
 			// P2P22:transfer
 			0xdb20f9f5 => {
@@ -221,46 +220,41 @@ where
 			0x54b3c76e => {
 				let mut env = env.buf_in_buf_out();
 
-			// 	let transfer_fee = <T as pallet_assets::Config>::WeightInfo::transfer();
-			// 	let charged_amount =
-			// 		env.charge_weight(transfer_fee.saturating_add(transfer_fee / 10))?;
-			// 	trace!(
-			// 		target: "runtime",
-			// 		"[ChainExtension]|call|transfer / charge_weight:{:?}",
-			// 		charged_amount
-			// 	);
+				let transfer_fee = <T as pallet_assets::Config>::WeightInfo::transfer();
+				let charged_amount =
+					env.charge_weight(transfer_fee.saturating_add(transfer_fee / 10))?;
+				trace!(
+					target: "runtime",
+					"[ChainExtension]|call|transfer / charge_weight:{:?}",
+					charged_amount
+				);
 
-			// 	let input: Psp22TransferFromInput<T::AssetId, T::AccountId, T::Balance> =
-			// 		env.read_as()?;
-			// 	let sender = env.ext().caller().clone();
+				let input: Psp22TransferFromInput<T::AssetId, T::AccountId, T::Balance> =
+					env.read_as()?;
+				let sender = env.ext().caller().clone();
 
-			// 	// TODO: can't access an asset's ownership info (private to pallet).
-			// 	let asset = pallet_assets::pallet::Asset::<T>::try_get(input.asset_id)?;
-			// 	let owner = T::Lookup::unlookup(asset.owner);
+				let result =
+					<pallet_assets::Pallet<T> as AllowanceMutate<T::AccountId>>::transfer_from(
+						input.asset_id,
+						&sender,
+						&input.from,
+						&input.to,
+						input.value,
+					);
+				trace!(
+					target: "runtime",
+					"[ChainExtension]|call|transfer_from"
+				);
+				result.map_err(|err| {
+					trace!(
+						target: "runtime",
+						"PSP22 transfer_from failed:{:?}",
+						err
+					);
+					DispatchError::Other("ChainExtension failed to call transfer_from")
+				})?;
 
-			// 	let to = T::Lookup::unlookup(input.to);
-			// 	let result =  Assets::<T>::transfer_approved(
-			// 		RawOrigin::Signed(sender).into(),
-			// 		input.asset_id,
-			// 		owner,
-			// 		to,
-			// 		input.value,
-			// 	);
-			// 	trace!(
-			// 		target: "runtime",
-			// 		"[ChainExtension]|call|transfer_from"
-			// 	);
-			// 	result.map_err(|err| {
-			// 		trace!(
-			// 			target: "runtime",
-			// 			"PSP22 transfer_from failed:{:?}",
-			// 			err
-			// 		);
-			// 		DispatchError::Other("ChainExtension failed to call transfer_from")
-			// 	})?;
-
-			// 	// env.adjust_weight(charged, actual_weight)
-			return Err(DispatchError::Other("Unimplemented func_id"));
+				// env.adjust_weight(charged, actual_weight)
 			},
 
 			// PSP22::approve + PSP22::increase_allowance
@@ -280,11 +274,10 @@ where
 					env.read_as()?;
 				let sender = env.ext().caller().clone();
 
-				let spender = T::Lookup::unlookup(input.spender);
-				let result =  Assets::<T>::approve_transfer(
-					RawOrigin::Signed(sender).into(),
+				let result = <pallet_assets::Pallet<T> as AllowanceMutate<T::AccountId>>::approve(
 					input.asset_id,
-					spender,
+					&sender,
+					&input.spender,
 					input.value,
 				);
 				trace!(
@@ -305,8 +298,12 @@ where
 
 			// PSP22::decrease_allowance
 			0xfecb57d5 => {
-				return Err(DispatchError::Other("Unimplemented func_id"));
-			}
+				trace!(
+					target: "runtime",
+					"[ChainExtension]|call|decrease_allowance"
+				);
+				return Err(DispatchError::Other("Unimplemented func_id"))
+			},
 
 			_ => {
 				error!("Called an unregistered `func_id`: {:}", func_id);
