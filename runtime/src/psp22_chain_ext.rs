@@ -64,57 +64,37 @@ where
 			// there is no need but it makes sense from a convention perspective.
 
 			// PSP22 Metadata interfaces
-
-			// PSP22Metadata::token_name
-			0x3d261bd4 => {
+			0x3d261bd4 | 0x34205be5 | 0x7271b782 => {
 				let mut env = env.buf_in_buf_out();
 				let asset_id = env.read_as()?;
 
-				let name =
-					<pallet_assets::Pallet<T> as InspectMetadata<T::AccountId>>::name(&asset_id)
-						.encode();
+				let result = match func_id {
+					// PSP22Metadata::token_name
+					0x3d261bd4 =>
+						<pallet_assets::Pallet<T> as InspectMetadata<T::AccountId>>::name(&asset_id)
+							.encode(),
+					// PSP22Metadata::token_symbol
+					0x34205be5 =>
+						<pallet_assets::Pallet<T> as InspectMetadata<T::AccountId>>::symbol(
+							&asset_id,
+						)
+						.encode(),
+					// PSP22Metadata::token_decimals
+					0x7271b782 =>
+						<pallet_assets::Pallet<T> as InspectMetadata<T::AccountId>>::decimals(
+							&asset_id,
+						)
+						.encode(),
+					
+					_ => unreachable!(),
+				};
 				trace!(
 					target: "runtime",
-					"[ChainExtension] <PSP22Metadata::token_name"
+					"[ChainExtension] PSP22Metadata::{:?}",
+					func_id
 				);
-				env.write(&name, false, None).map_err(|_| {
-					DispatchError::Other("ChainExtension failed to call token_name")
-				})?;
-			},
-
-			// PSP22Metadata::token_symbol
-			0x34205be5 => {
-				let mut env = env.buf_in_buf_out();
-				let asset_id = env.read_as()?;
-
-				let symbol =
-					<pallet_assets::Pallet<T> as InspectMetadata<T::AccountId>>::symbol(&asset_id)
-						.encode();
-				trace!(
-					target: "runtime",
-					"[ChainExtension] PSP22Metadata::token_symbol"
-				);
-				env.write(&symbol, false, None).map_err(|_| {
-					DispatchError::Other("ChainExtension failed to call token_symbol")
-				})?;
-			},
-
-			// PSP22Metadata::token_decimals
-			0x7271b782 => {
-				let mut env = env.buf_in_buf_out();
-				let asset_id = env.read_as()?;
-
-				let decimals =
-					<pallet_assets::Pallet<T> as InspectMetadata<T::AccountId>>::decimals(
-						&asset_id,
-					)
-					.encode();
-				trace!(
-					target: "runtime",
-					"[ChainExtension] PSP22Metadata::token_decimals"
-				);
-				env.write(&decimals, false, None).map_err(|_| {
-					DispatchError::Other("ChainExtension failed to call token_decimals")
+				env.write(&result, false, None).map_err(|_| {
+					DispatchError::Other("ChainExtension failed to call PSP22Metadata")
 				})?;
 			},
 
