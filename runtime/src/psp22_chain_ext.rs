@@ -1,6 +1,7 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{
 	log::{error, trace},
+	pallet_prelude::*,
 	traits::fungibles::{
 		approvals::{Inspect as AllowanceInspect, Mutate as AllowanceMutate},
 		Inspect, InspectMetadata, Transfer,
@@ -67,7 +68,6 @@ where
 			0x3d261bd4 | 0x34205be5 | 0x7271b782 => {
 				let mut env = env.buf_in_buf_out();
 				let asset_id = env.read_as()?;
-
 				let result = match func_id {
 					// PSP22Metadata::token_name
 					0x3d261bd4 =>
@@ -85,7 +85,6 @@ where
 							&asset_id,
 						)
 						.encode(),
-					
 					_ => unreachable!(),
 				};
 				trace!(
@@ -98,71 +97,57 @@ where
 				})?;
 			},
 
-			// PSP22 interfaces
-
-			// PSP22::total_supply
-			0x162df8c2 => {
+			// PSP22 interface queries
+			0x162df8c2 | 0x6568382f | 0x4d47d921 => {
 				let mut env = env.buf_in_buf_out();
-				let asset_id = env.read_as()?;
-
-				let total_supply =
-					<pallet_assets::Pallet<T> as Inspect<T::AccountId>>::total_issuance(asset_id);
-				let result = total_supply.encode();
+				let result = match func_id {
+					// PSP22::total_supply
+					0x162df8c2 => {
+						let asset_id = env.read_as()?;
+						<pallet_assets::Pallet<T> as Inspect<T::AccountId>>::total_issuance(
+							asset_id,
+						)
+						.encode()
+					},
+					// PSP22::balance_of
+					0x6568382f => {
+						let input: Psp22BalanceOfInput<T::AssetId, T::AccountId> = env.read_as()?;
+						<pallet_assets::Pallet<T> as Inspect<T::AccountId>>::balance(
+							input.asset_id,
+							&input.owner,
+						)
+						.encode()
+					},
+					// PSP22::allowance
+					0x4d47d921 => {
+						let input: Psp22AllowanceInput<T::AssetId, T::AccountId> = env.read_as()?;
+						<pallet_assets::Pallet<T> as AllowanceInspect<T::AccountId>>::allowance(
+							input.asset_id,
+							&input.owner,
+							&input.spender,
+						)
+						.encode()
+					},
+					_ => unreachable!(),
+				};
 				trace!(
 					target: "runtime",
-					"[ChainExtension] PSP22::total_supply"
+					"[ChainExtension] PSP22::{:?}",
+					func_id
 				);
 				env.write(&result, false, None).map_err(|_| {
-					DispatchError::Other("ChainExtension failed to call total_supply")
+					DispatchError::Other("ChainExtension failed to call PSP22 query")
 				})?;
-			},
-
-			// PSP22::balance_of
-			0x6568382f => {
-				let mut env = env.buf_in_buf_out();
-				let input: Psp22BalanceOfInput<T::AssetId, T::AccountId> = env.read_as()?;
-
-				let balance = <pallet_assets::Pallet<T> as Inspect<T::AccountId>>::balance(
-					input.asset_id,
-					&input.owner,
-				);
-				let result = balance.encode();
-				trace!(
-					target: "runtime",
-					"[ChainExtension] PSP22::balance_of"
-				);
-				env.write(&result, false, None).map_err(|_| {
-					DispatchError::Other("ChainExtension failed to call balance_of")
-				})?;
-			},
-
-			// PSP22::allowance
-			0x4d47d921 => {
-				let mut env = env.buf_in_buf_out();
-				let input: Psp22AllowanceInput<T::AssetId, T::AccountId> = env.read_as()?;
-
-				let allowance =
-					<pallet_assets::Pallet<T> as AllowanceInspect<T::AccountId>>::allowance(
-						input.asset_id,
-						&input.owner,
-						&input.spender,
-					);
-				let result = allowance.encode();
-				trace!(
-					target: "runtime",
-					"[ChainExtension] PSP22::allowance"
-				);
-				env.write(&result, false, None)
-					.map_err(|_| DispatchError::Other("ChainExtension failed to call allowance"))?;
 			},
 
 			// P2P22:transfer
 			0xdb20f9f5 => {
 				let mut env = env.buf_in_buf_out();
 
-				let transfer_weight = <T as pallet_assets::Config>::WeightInfo::transfer();
-				let charged_weight =
-					env.charge_weight(transfer_weight.saturating_add(transfer_weight / 10))?;
+				let base_weight = <T as pallet_assets::Config>::WeightInfo::transfer();
+				let overhead =
+					<T as pallet_contracts::Config>::Schedule::get().host_fn_weights.debug_message;
+				let charged_weight = env.charge_weight(base_weight.saturating_add(overhead))?;
 				trace!(
 					target: "runtime",
 					"[ChainExtension]|call|transfer / charge_weight:{:?}",
@@ -200,9 +185,10 @@ where
 			0x54b3c76e => {
 				let mut env = env.buf_in_buf_out();
 
-				let transfer_fee = <T as pallet_assets::Config>::WeightInfo::transfer();
-				let charged_amount =
-					env.charge_weight(transfer_fee.saturating_add(transfer_fee / 10))?;
+				let base_weight = <T as pallet_assets::Config>::WeightInfo::transfer();
+				let overhead =
+					<T as pallet_contracts::Config>::Schedule::get().host_fn_weights.debug_message;
+				let charged_amount = env.charge_weight(base_weight.saturating_add(overhead))?;
 				trace!(
 					target: "runtime",
 					"[ChainExtension]|call|transfer / charge_weight:{:?}",
@@ -211,13 +197,13 @@ where
 
 				let input: Psp22TransferFromInput<T::AssetId, T::AccountId, T::Balance> =
 					env.read_as()?;
-				let sender = env.ext().caller().clone();
+				let spender = env.ext().caller();
 
 				let result =
 					<pallet_assets::Pallet<T> as AllowanceMutate<T::AccountId>>::transfer_from(
 						input.asset_id,
-						&sender,
 						&input.from,
+						&spender,
 						&input.to,
 						input.value,
 					);
@@ -241,9 +227,10 @@ where
 			0xb20f1bbd | 0x96d6b57a => {
 				let mut env = env.buf_in_buf_out();
 
-				let approve_weight = <T as pallet_assets::Config>::WeightInfo::approve_transfer();
-				let charged_weight =
-					env.charge_weight(approve_weight.saturating_add(approve_weight / 10))?;
+				let base_weight = <T as pallet_assets::Config>::WeightInfo::approve_transfer();
+				let overhead =
+					<T as pallet_contracts::Config>::Schedule::get().host_fn_weights.debug_message;
+				let charged_weight = env.charge_weight(base_weight.saturating_add(overhead))?;
 				trace!(
 					target: "runtime",
 					"[ChainExtension]|call|approve / charge_weight:{:?}",
@@ -252,11 +239,11 @@ where
 
 				let input: Psp22ApproveInput<T::AssetId, T::AccountId, T::Balance> =
 					env.read_as()?;
-				let sender = env.ext().caller().clone();
+				let owner = env.ext().caller();
 
 				let result = <pallet_assets::Pallet<T> as AllowanceMutate<T::AccountId>>::approve(
 					input.asset_id,
-					&sender,
+					&owner,
 					&input.spender,
 					input.value,
 				);

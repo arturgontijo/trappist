@@ -356,7 +356,7 @@ type EnsureRootOrHalfCouncil = EnsureOneOf<
 >;
 
 parameter_types! {
-	pub const MinAuthorities: u32 = 2;
+	pub const MinAuthorities: u32 = 1;
 }
 
 impl validatorset::Config for Runtime {
@@ -522,11 +522,11 @@ construct_runtime!(
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
 		RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Pallet, Storage},
 		Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
-		Session: pallet_session::{Pallet, Call, Storage, Event, Config<T>},
+		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		ValidatorSet: validatorset::{Pallet, Call, Storage, Event<T>, Config<T>},
+		Session: pallet_session::{Pallet, Call, Storage, Event, Config<T>},
 		Aura: pallet_aura::{Pallet, Config<T>},
 		Grandpa: pallet_grandpa::{Pallet, Call, Storage, Config, Event},
-		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		TransactionPayment: pallet_transaction_payment::{Pallet, Storage, Config},
 		Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>},
 		TemplateModule: pallet_template::{Pallet, Call, Storage, Event<T>},
